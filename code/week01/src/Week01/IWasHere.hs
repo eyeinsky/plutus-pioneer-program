@@ -39,11 +39,9 @@ import qualified Prelude              as P
 import           Schema               (ToSchema)
 import           Text.Printf          (printf)
 
--- * On chain
-
 data Message = Message
-  { messageAuthor :: !PaymentPubKeyHash
-  -- , messageContent :: P.String -- ..or something
+  { messageAuthor :: Integer -- TODO: this should be a string
+  , messageContent :: Integer -- TODO: this should be a string
   } deriving P.Show
 
 PlutusTx.unstableMakeIsData ''Message
@@ -58,26 +56,43 @@ data Datum = Datum
 PlutusTx.unstableMakeIsData ''Datum
 PlutusTx.makeLift ''Datum
 
-data Writing
-instance Scripts.ValidatorTypes Writing where
-    type instance RedeemerType Writing = Action
-    type instance DatumType Writing = Action
+data IWasHere
+instance Scripts.ValidatorTypes IWasHere where
+  type instance RedeemerType IWasHere = ()
+  type instance DatumType IWasHere = ()
 
+-- * Validator
 
 {-# INLINABLE mkValidator #-}
-mkValidator :: () -> MyRedeemer -> ScriptContext -> Bool
-mkValidator _ _ _ = True -- FIX ME!
+mkValidator :: () -> () -> ScriptContext -> Bool
+mkValidator _ _ _ = False -- FIX ME!
 
+typedValidator :: Scripts.TypedValidator IWasHere
+typedValidator = Scripts.mkTypedValidator @IWasHere
+    $$(PlutusTx.compile [|| mkValidator ||])
+    $$(PlutusTx.compile [|| wrap ||])
+  where
+    wrap = Scripts.wrapValidator @(Scripts.RedeemerType IWasHere) @(Scripts.DatumType IWasHere)
 
--- * Off chain
+validator :: Validator
+validator = Scripts.validatorScript typedValidator
 
-{-# INLINABLE writeMessage #-}
-writeMessage :: Datum -> Datum
-writeMessage Datum = Datum
+valHash :: Ledger.ValidatorHash
+valHash = Scripts.validatorHash typedValidator
 
-data WriteParams
+scrAddress :: Ledger.Address
+scrAddress = scriptAddress validator
+
+-- * Off-chain
 
 type Schema = Endpoint "write" WriteParams
+
+writeMessage :: AsContractError e => Message -> Contract w s e ()
+writeMessage msg = do
+  -- TODO write to actual blockchain
+  logInfo @P.String $ printf "%s wrote \"%s\" onto the blockchain" (messageAuthor msg) (messageContent msg)
+
+data WriteParams
 
 hot :: IO ()
 hot = P.putStrLn "hello there"
