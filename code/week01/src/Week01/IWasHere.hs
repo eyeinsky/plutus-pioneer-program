@@ -39,7 +39,7 @@ import qualified Prelude              as P
 import           Schema               (ToSchema)
 import           Text.Printf          (printf)
 
--- * Data types
+-- * On chain
 
 data Message = Message
   { messageAuthor :: !PaymentPubKeyHash
@@ -63,18 +63,21 @@ instance Scripts.ValidatorTypes Writing where
     type instance RedeemerType Writing = Action
     type instance DatumType Writing = Action
 
--- *
+
+{-# INLINABLE mkValidator #-}
+mkValidator :: () -> MyRedeemer -> ScriptContext -> Bool
+mkValidator _ _ _ = True -- FIX ME!
+
+
+-- * Off chain
 
 {-# INLINABLE writeMessage #-}
 writeMessage :: Datum -> Datum
 writeMessage Datum = Datum
 
-data StartParams
 data WriteParams
 
-type Schema =
-      Endpoint "start" StartParams
-  .\/ Endpoint "write" WriteParams
+type Schema = Endpoint "write" WriteParams
 
 hot :: IO ()
 hot = P.putStrLn "hello there"
