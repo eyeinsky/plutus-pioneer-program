@@ -34,6 +34,7 @@ import           Playground.Types     (KnownCurrency (..))
 import           Prelude              (IO)
 import qualified Prelude              as P
 import           Text.Printf          (printf)
+import           Data.Coerce
 
 data VestingDatum = VestingDatum
     { beneficiary1 :: PaymentPubKeyHash
@@ -44,10 +45,21 @@ data VestingDatum = VestingDatum
 PlutusTx.unstableMakeIsData ''VestingDatum
 
 {-# INLINABLE mkValidator #-}
--- This should validate if either beneficiary1 has signed the transaction and the current slot is before or at the deadline
--- or if beneficiary2 has signed the transaction and the deadline has passed.
 mkValidator :: VestingDatum -> () -> ScriptContext -> Bool
-mkValidator _ _ _ = False -- FIX ME!
+mkValidator dat () ctx
+  = b1signed && (upToDeadline `contains` txRange)
+  || b2signed &&  (afterDeadline `contains` txRange)
+  where
+    txInfo = scriptContextTxInfo ctx
+    sigs = txInfoSignatories txInfo :: [PubKeyHash]
+    txRange = txInfoValidRange txInfo
+    b1signed = coerce (beneficiary1 dat) `elem` sigs
+    b2signed = coerce (beneficiary2 dat) `elem` sigs
+
+    upToDeadline = to (deadline dat)
+    afterDeadline = Interval
+      (strictLowerBound $ deadline dat)
+      (UpperBound PosInf True)
 
 data Vesting
 instance Scripts.ValidatorTypes Vesting where
