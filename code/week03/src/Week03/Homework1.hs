@@ -37,8 +37,8 @@ import           Text.Printf          (printf)
 import           Data.Coerce
 
 data VestingDatum = VestingDatum
-    { beneficiary1 :: PaymentPubKeyHash
-    , beneficiary2 :: PaymentPubKeyHash
+    { other :: PaymentPubKeyHash
+    , self :: PaymentPubKeyHash
     , deadline     :: POSIXTime
     } deriving P.Show
 
@@ -47,14 +47,16 @@ PlutusTx.unstableMakeIsData ''VestingDatum
 {-# INLINABLE mkValidator #-}
 mkValidator :: VestingDatum -> () -> ScriptContext -> Bool
 mkValidator dat () ctx
-  = b1signed && (upToDeadline `contains` txRange)
-  || b2signed &&  (afterDeadline `contains` txRange)
+  = otherSigned && (upToDeadline `contains` txRange)
+  || selfSigned && (afterDeadline `contains` txRange)
   where
     txInfo = scriptContextTxInfo ctx
     sigs = txInfoSignatories txInfo :: [PubKeyHash]
     txRange = txInfoValidRange txInfo
-    b1signed = coerce (beneficiary1 dat) `elem` sigs
-    b2signed = coerce (beneficiary2 dat) `elem` sigs
+    otherSigned = coerce (other dat) `elem` sigs
+    selfSigned = coerce (self dat) `elem` sigs
+
+
 
     upToDeadline = to (deadline dat)
     afterDeadline = Interval
@@ -93,8 +95,8 @@ give :: AsContractError e => GiveParams -> Contract w s e ()
 give gp = do
     pkh <- ownPaymentPubKeyHash
     let dat = VestingDatum
-                { beneficiary1 = gpBeneficiary gp
-                , beneficiary2 = pkh
+                { other = gpBeneficiary gp
+                , self = pkh
                 , deadline     = gpDeadline gp
                 }
         tx  = Constraints.mustPayToTheScript dat $ Ada.lovelaceValueOf $ gpAmount gp
@@ -110,8 +112,8 @@ grab = do
     now    <- currentTime
     pkh    <- ownPaymentPubKeyHash
     utxos  <- utxosAt scrAddress
-    let utxos1 = Map.filter (isSuitable $ \dat -> beneficiary1 dat == pkh && now <= deadline dat) utxos
-        utxos2 = Map.filter (isSuitable $ \dat -> beneficiary2 dat == pkh && now >  deadline dat) utxos
+    let utxos1 = Map.filter (isSuitable $ \dat -> other dat == pkh && now <= deadline dat) utxos
+        utxos2 = Map.filter (isSuitable $ \dat -> self dat == pkh && now >  deadline dat) utxos
     logInfo @P.String $ printf "found %d gift(s) to grab" (Map.size utxos1 P.+ Map.size utxos2)
     unless (Map.null utxos1) $ do
         let orefs   = fst <$> Map.toList utxos1
